@@ -1,8 +1,13 @@
 # Process Feedback Assignment Submission changes
 
+## 0.5.1 - 2026-09-24
+
+- Marks the plugin as stable (previously alpha).
+- Requires `local_processfeedback` 2026092400 (0.5.1) or newer.
+
 ## 0.5.0 - 2026-09-20
 
-- Alpha release of the `assignsubmission_processfeedback` Moodle assignment submission plugin.
+- Release of the `assignsubmission_processfeedback` Moodle assignment submission plugin.
 - Selects automatic Process Feedback submission by default.
 - Lowers the minimum required Moodle version to 4.4.
 - Requires `local_processfeedback` 2026092300 or newer.
