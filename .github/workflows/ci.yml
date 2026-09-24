@@ -1,0 +1,205 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_COMPONENT: assignsubmission_processfeedback
+  PLUGIN_NAME: assignsubmission_processfeedback
+  PACKAGE_NAME: moodle-assignsubmission_processfeedback
+  PHP_VERSION: "8.3"
+  MOODLE_BRANCH: MOODLE_500_STABLE
+  LOCAL_PROCESSFEEDBACK_REPOSITORY: https://github.com/processfeedback/moodle-local_processfeedback.git
+
+jobs:
+  validate-and-package:
+    name: Validate and package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: none
+          coverage: none
+
+      - name: Validate plugin structure
+        run: |
+          set -euo pipefail
+
+          test -f version.php
+          test -f lib.php
+          test -f locallib.php
+          test -f styles.css
+          test -f db/install.xml
+          test -f db/access.php
+          test -f classes/privacy/provider.php
+          test -f backup/moodle2/backup_assignsubmission_processfeedback_subplugin.class.php
+          test -f backup/moodle2/restore_assignsubmission_processfeedback_subplugin.class.php
+          test -f "lang/en/${PLUGIN_COMPONENT}.php"
+
+      - name: Check PHP syntax
+        run: |
+          set -euo pipefail
+
+          find . \
+            -path './.git' -prune -o \
+            -path './node_modules' -prune -o \
+            -path './dist' -prune -o \
+            -name '*.php' -print0 | xargs -0 -n 1 php -l
+
+      - name: Install validation tools
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml2-utils rsync
+
+      - name: Validate XML files
+        run: |
+          set -euo pipefail
+
+          find . \
+            -path './.git' -prune -o \
+            -path './node_modules' -prune -o \
+            -path './dist' -prune -o \
+            -name '*.xml' -print0 | xargs -0 -n 1 xmllint --noout
+
+      - name: Verify Moodle metadata
+        run: |
+          set -euo pipefail
+
+          grep -q "\$plugin->component = '${PLUGIN_COMPONENT}'" version.php
+          grep -q "\$plugin->release = '" version.php
+          grep -q "class assign_submission_processfeedback" locallib.php
+          grep -q "assignsubmission_processfeedback_pluginfile" lib.php
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            release="$(sed -n "s/^\$plugin->release = '\([^']*\)';/\1/p" version.php)"
+            test -n "${release}"
+            test "v${release}" = "${GITHUB_REF_NAME}"
+          fi
+
+      - name: Stage Moodle plugin package
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p "dist/${PLUGIN_NAME}"
+
+          rsync -a ./ "dist/${PLUGIN_NAME}/" \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='node_modules/' \
+            --exclude='dist/' \
+            --exclude='coverage/' \
+            --exclude='.codex/' \
+            --exclude='.agents/' \
+            --exclude='.claude/' \
+            --exclude='.idea/' \
+            --exclude='.vscode/' \
+            --exclude='*.log' \
+            --exclude='*.tmp' \
+            --exclude='*.bak' \
+            --exclude='*.orig' \
+            --exclude='*.rej' \
+            --exclude='*~' \
+            --exclude='.DS_Store' \
+            --exclude='*.map'
+
+          test -f "dist/${PLUGIN_NAME}/version.php"
+          test -f "dist/${PLUGIN_NAME}/lang/en/${PLUGIN_COMPONENT}.php"
+          test ! -d "dist/${PLUGIN_NAME}/.git"
+          test ! -d "dist/${PLUGIN_NAME}/node_modules"
+
+      - name: Verify staged Moodle plugin package
+        run: |
+          set -euo pipefail
+
+          test -d "dist/${PLUGIN_NAME}"
+          test -f "dist/${PLUGIN_NAME}/version.php"
+          test -f "dist/${PLUGIN_NAME}/lang/en/${PLUGIN_COMPONENT}.php"
+
+      - name: Upload staged plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist
+          if-no-files-found: error
+
+  publish-github-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: validate-and-package
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download staged plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist
+
+      - name: Download GitHub-generated artifact ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          artifact_id="$(
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+              --jq ".artifacts[] | select(.name == \"${PACKAGE_NAME}\") | .id" |
+            head -n 1
+          )"
+
+          test -n "${artifact_id}"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            > "dist/${PACKAGE_NAME}.zip"
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          test -f "dist/${PLUGIN_NAME}/version.php"
+          test -f "dist/${PACKAGE_NAME}.zip"
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "dist/${PACKAGE_NAME}.zip" --clobber
+          else
+            notes_args=(--notes "Release ${GITHUB_REF_NAME}.")
+            if [[ -f CHANGES.md ]]; then
+              notes_args=(--notes-file CHANGES.md)
+            fi
+
+            gh release create "${GITHUB_REF_NAME}" "dist/${PACKAGE_NAME}.zip" \
+              --title "${GITHUB_REF_NAME}" \
+              "${notes_args[@]}"
+          fi
