@@ -24,56 +24,31 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-// Plugin identity.
-// Shown in: Site administration > Plugins > Assignment plugins > Submission plugins (plugin list).
-$string['pluginname'] = 'Process Feedback';
-
-// Assignment settings — shown to teachers when creating or editing an assignment.
-// "enabled" and "enabled_help" are retained for Moodle's standard hidden submission plugin enabled field.
-// "submissionmode" is retained for compatibility with older cached/form references.
-// "autosubmission" appears as the automatic submission checkbox label.
-$string['enabled'] = 'Enable Process Feedback';
-$string['enabled_help'] = 'Enables the Process Feedback assignment submission plugin.';
-$string['submissionmode'] = 'Writing process report';
-$string['submissionmode_help'] = 'Writing process report';
+$string['activedays'] = 'Active days';
 $string['autosubmission'] = 'Auto submit on assignment submission';
 $string['autosubmission_help'] = 'When enabled, writing process report (and summary) is submitted automatically when students submit their work.';
-
-// Student submission form — shown to students on the "Add/Edit submission" page.
-// "studentnoticeautomatic" is the info notice rendered when automatic process data submission is enabled.
-// "savingprocessdata" is a status message shown during the submit interceptor upload (local_processfeedback).
-$string['studentnoticeautomatic'] = 'Your writing process report will be included when you Save Changes.';
-$string['savingprocessdata'] = 'Saving process data...';
-
-// Grading and submission summary — shown to teachers in the assignment grading view,
-// and to students when viewing their own submitted work.
-// "nodata" is shown when a submission exists but no process data was attached.
-// "downloadprocesszip" is the link text for downloading the raw process data ZIP.
-// "process_files" labels the file area internally — not shown to normal users, used by Moodle's file management and backup/restore systems.
-$string['nodata'] = 'No process data submitted.';
-$string['downloadprocesszip'] = 'Download Process Data';
-$string['process_files'] = 'Process Feedback data files';
-$string['edittime'] = 'Writing time';
+$string['downloadprocesszip'] = 'Download process data';
 $string['durationhoursminutes'] = '{$a->hours} hr {$a->minutes} mins';
 $string['durationminutes'] = '{$a} mins';
 $string['durationseconds'] = '{$a} sec';
-$string['revisions'] = 'Snapshots';
-$string['activedays'] = 'Active days';
-$string['largestchange'] = 'Largest change';
-$string['largestchangechars'] = '{$a} chars';
-$string['firstedit'] = 'First edit';
+$string['edittime'] = 'Writing time';
+$string['enabled'] = 'Enable Process Feedback';
+$string['enabled_help'] = 'Enables the Process Feedback assignment submission plugin.';
 $string['lastedit'] = 'Last edit';
-
-// Privacy metadata — not shown in normal use.
-// Displayed only in: Site administration > Users > Privacy and policies > Data registry,
-// and in personal data exports requested by users under GDPR/privacy tools.
+$string['nodata'] = 'No process data submitted.';
+$string['pluginname'] = 'Process Feedback';
 $string['privacy:metadata:assignsubmission_processfeedback'] = 'Writing process summary data stored alongside the assignment submission.';
-$string['privacy:metadata:assignsubmission_processfeedback:assignment'] = 'The ID of the assignment this data belongs to.';
-$string['privacy:metadata:assignsubmission_processfeedback:submission'] = 'The ID of the submission this data belongs to.';
-$string['privacy:metadata:assignsubmission_processfeedback:edit_time_seconds'] = 'Total active editing time recorded in seconds.';
-$string['privacy:metadata:assignsubmission_processfeedback:revision_count'] = 'Total number of revision snapshots recorded during writing.';
 $string['privacy:metadata:assignsubmission_processfeedback:active_days'] = 'Number of distinct calendar days on which editing occurred.';
+$string['privacy:metadata:assignsubmission_processfeedback:assignment'] = 'The ID of the assignment this data belongs to.';
+$string['privacy:metadata:assignsubmission_processfeedback:edit_time_seconds'] = 'Total active editing time recorded in seconds.';
 $string['privacy:metadata:assignsubmission_processfeedback:first_edit'] = 'Timestamp of the first recorded edit.';
 $string['privacy:metadata:assignsubmission_processfeedback:last_edit'] = 'Timestamp of the most recent recorded edit.';
-$string['privacy:metadata:assignsubmission_processfeedback:largest_change_chars'] = 'The largest single change in characters between any two consecutive snapshots.';
+$string['privacy:metadata:assignsubmission_processfeedback:revision_count'] = 'Total number of revision snapshots recorded during writing.';
+$string['privacy:metadata:assignsubmission_processfeedback:submission'] = 'The ID of the submission this data belongs to.';
 $string['privacy:metadata:filearea'] = 'The full writing process ZIP file stored per submission.';
+$string['process_files'] = 'Process Feedback data files';
+$string['revisions'] = 'Snapshots';
+$string['savingprocessdata'] = 'Saving process data...';
+$string['studentnoticeautomatic'] = 'Your writing process report will be included when you save changes.';
+$string['submissionmode'] = 'Writing process report';
+$string['submissionmode_help'] = 'Writing process report';

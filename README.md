@@ -8,3 +8,7 @@ it with their assignment submission. This plugin receives, stores, and displays 
 Both plugins are required. See the
 [local plugin's README](https://github.com/processfeedback/moodle-local_processfeedback#readme)
 for installation and setup instructions.
+
+## Issues
+
+Report bugs and feature requests at https://github.com/processfeedback/moodle-assignsubmission_processfeedback/issues.

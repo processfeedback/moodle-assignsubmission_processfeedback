@@ -14,9 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
-
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Restore support for the Process Feedback assignment submission plugin.
  *
@@ -25,6 +22,13 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+/**
+ * Restore support for the Process Feedback assignment submission plugin.
+ *
+ * @package    assignsubmission_processfeedback
+ * @copyright  2026 Process Feedback
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 class restore_assignsubmission_processfeedback_subplugin extends restore_subplugin {
     /**
      * Define paths handled by this subplugin.
@@ -74,7 +78,6 @@ class restore_assignsubmission_processfeedback_subplugin extends restore_subplug
             'active_days' => isset($data->active_days) ? (int) $data->active_days : null,
             'first_edit' => isset($data->first_edit) ? (string) $data->first_edit : null,
             'last_edit' => isset($data->last_edit) ? (string) $data->last_edit : null,
-            'largest_change_chars' => isset($data->largest_change_chars) ? (int) $data->largest_change_chars : null,
         ];
 
         $newitemid = $DB->insert_record('assignsubmission_processfeedback', $record);

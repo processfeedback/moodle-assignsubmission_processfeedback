@@ -22,8 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Upgrade the Process Feedback assignment submission plugin.
  *
@@ -67,6 +65,17 @@ function xmldb_assignsubmission_processfeedback_upgrade($oldversion): bool {
         }
 
         upgrade_plugin_savepoint(true, 2026053100, 'assignsubmission', 'processfeedback');
+    }
+
+    if ($oldversion < 2026093001) {
+        // The largest change metric is no longer recorded.
+        $table = new xmldb_table('assignsubmission_processfeedback');
+        $field = new xmldb_field('largest_change_chars');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->drop_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026093001, 'assignsubmission', 'processfeedback');
     }
 
     return true;

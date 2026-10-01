@@ -14,9 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
-
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Backup support for the Process Feedback assignment submission plugin.
  *
@@ -25,6 +22,13 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+/**
+ * Backup support for the Process Feedback assignment submission plugin.
+ *
+ * @package    assignsubmission_processfeedback
+ * @copyright  2026 Process Feedback
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 class backup_assignsubmission_processfeedback_subplugin extends backup_subplugin {
     /**
      * Define the subplugin structure attached to each assignment submission.
@@ -41,7 +45,6 @@ class backup_assignsubmission_processfeedback_subplugin extends backup_subplugin
             'active_days',
             'first_edit',
             'last_edit',
-            'largest_change_chars',
         ]);
 
         $subplugin->add_child($wrapper);

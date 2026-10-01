@@ -1,205 +1,146 @@
-name: CI
+name: Moodle Plugin CI
 
-on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+on: [push, pull_request]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  PLUGIN_COMPONENT: assignsubmission_processfeedback
-  PLUGIN_NAME: assignsubmission_processfeedback
-  PACKAGE_NAME: moodle-assignsubmission_processfeedback
-  PHP_VERSION: "8.3"
-  MOODLE_BRANCH: MOODLE_500_STABLE
-  LOCAL_PROCESSFEEDBACK_REPOSITORY: https://github.com/processfeedback/moodle-local_processfeedback.git
-
 jobs:
-  validate-and-package:
-    name: Validate and package
-    runs-on: ubuntu-latest
+  test:
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: ${{ matrix.database == 'pgsql' && 'postgres:17' || '' }}
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
+
+      mariadb:
+        image: ${{ matrix.database == 'mariadb' && 'mariadb:11' || '' }}
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
+          MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
+        ports:
+          - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval 10s --health-timeout 5s --health-retries 3
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.1'
+            moodle-branch: 'MOODLE_404_STABLE'
+            database: 'pgsql'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_404_STABLE'
+            database: 'mariadb'
+          - php: '8.2'
+            moodle-branch: 'MOODLE_405_STABLE'
+            database: 'pgsql'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_405_STABLE'
+            database: 'mariadb'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_500_STABLE'
+            database: 'pgsql'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_501_STABLE'
+            database: 'pgsql'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_502_STABLE'
+            database: 'pgsql'
+          - php: '8.3'
+            moodle-branch: 'MOODLE_502_STABLE'
+            database: 'mariadb'
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Check out repository code
+        uses: actions/checkout@v6
+        with:
+          path: plugin
+          persist-credentials: false
 
-      - name: Set up PHP
+      - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: none
+          php-version: ${{ matrix.php }}
+          extensions: ${{ matrix.extensions }}
+          ini-values: max_input_vars=5000, opcache.enable_cli=1
           coverage: none
 
-      - name: Validate plugin structure
+      - name: Initialise moodle-plugin-ci
         run: |
-          set -euo pipefail
+          composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ^4
+          echo $(cd ci/bin; pwd) >> $GITHUB_PATH
+          echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
+          sudo locale-gen en_AU.UTF-8
+          echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
 
-          test -f version.php
-          test -f lib.php
-          test -f locallib.php
-          test -f styles.css
-          test -f db/install.xml
-          test -f db/access.php
-          test -f classes/privacy/provider.php
-          test -f backup/moodle2/backup_assignsubmission_processfeedback_subplugin.class.php
-          test -f backup/moodle2/restore_assignsubmission_processfeedback_subplugin.class.php
-          test -f "lang/en/${PLUGIN_COMPONENT}.php"
+      - name: Add the required local_processfeedback plugin
+        run: moodle-plugin-ci add-plugin --branch main processfeedback/moodle-local_processfeedback
 
-      - name: Check PHP syntax
-        run: |
-          set -euo pipefail
-
-          find . \
-            -path './.git' -prune -o \
-            -path './node_modules' -prune -o \
-            -path './dist' -prune -o \
-            -name '*.php' -print0 | xargs -0 -n 1 php -l
-
-      - name: Install validation tools
-        run: |
-          set -euo pipefail
-
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libxml2-utils rsync
-
-      - name: Validate XML files
-        run: |
-          set -euo pipefail
-
-          find . \
-            -path './.git' -prune -o \
-            -path './node_modules' -prune -o \
-            -path './dist' -prune -o \
-            -name '*.xml' -print0 | xargs -0 -n 1 xmllint --noout
-
-      - name: Verify Moodle metadata
-        run: |
-          set -euo pipefail
-
-          grep -q "\$plugin->component = '${PLUGIN_COMPONENT}'" version.php
-          grep -q "\$plugin->release = '" version.php
-          grep -q "class assign_submission_processfeedback" locallib.php
-          grep -q "assignsubmission_processfeedback_pluginfile" lib.php
-
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            release="$(sed -n "s/^\$plugin->release = '\([^']*\)';/\1/p" version.php)"
-            test -n "${release}"
-            test "v${release}" = "${GITHUB_REF_NAME}"
-          fi
-
-      - name: Stage Moodle plugin package
-        run: |
-          set -euo pipefail
-
-          rm -rf dist
-          mkdir -p "dist/${PLUGIN_NAME}"
-
-          rsync -a ./ "dist/${PLUGIN_NAME}/" \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='node_modules/' \
-            --exclude='dist/' \
-            --exclude='coverage/' \
-            --exclude='.codex/' \
-            --exclude='.agents/' \
-            --exclude='.claude/' \
-            --exclude='.idea/' \
-            --exclude='.vscode/' \
-            --exclude='*.log' \
-            --exclude='*.tmp' \
-            --exclude='*.bak' \
-            --exclude='*.orig' \
-            --exclude='*.rej' \
-            --exclude='*~' \
-            --exclude='.DS_Store' \
-            --exclude='*.map'
-
-          test -f "dist/${PLUGIN_NAME}/version.php"
-          test -f "dist/${PLUGIN_NAME}/lang/en/${PLUGIN_COMPONENT}.php"
-          test ! -d "dist/${PLUGIN_NAME}/.git"
-          test ! -d "dist/${PLUGIN_NAME}/node_modules"
-
-      - name: Verify staged Moodle plugin package
-        run: |
-          set -euo pipefail
-
-          test -d "dist/${PLUGIN_NAME}"
-          test -f "dist/${PLUGIN_NAME}/version.php"
-          test -f "dist/${PLUGIN_NAME}/lang/en/${PLUGIN_COMPONENT}.php"
-
-      - name: Upload staged plugin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PACKAGE_NAME }}
-          path: dist
-          if-no-files-found: error
-
-  publish-github-release:
-    name: Publish GitHub release
-    runs-on: ubuntu-latest
-    needs: validate-and-package
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download staged plugin artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.PACKAGE_NAME }}
-          path: dist
-
-      - name: Download GitHub-generated artifact ZIP
+      - name: Install moodle-plugin-ci
+        run: moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
+          DB: ${{ matrix.database }}
+          MOODLE_BRANCH: ${{ matrix.moodle-branch }}
 
-          artifact_id="$(
-            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-              --jq ".artifacts[] | select(.name == \"${PACKAGE_NAME}\") | .id" |
-            head -n 1
-          )"
+      - name: PHP Lint
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phplint
 
-          test -n "${artifact_id}"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
-            > "dist/${PACKAGE_NAME}.zip"
+      - name: PHP Mess Detector
+        continue-on-error: true # This step will show errors but will not fail
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpmd
 
-      - name: Publish release asset
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
+      - name: Moodle Code Checker
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpcs --max-warnings 0
 
-          test -f "dist/${PLUGIN_NAME}/version.php"
-          test -f "dist/${PACKAGE_NAME}.zip"
+      - name: Moodle PHPDoc Checker
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpdoc --max-warnings 0
 
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" "dist/${PACKAGE_NAME}.zip" --clobber
-          else
-            notes_args=(--notes "Release ${GITHUB_REF_NAME}.")
-            if [[ -f CHANGES.md ]]; then
-              notes_args=(--notes-file CHANGES.md)
-            fi
+      - name: Validating
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci validate
 
-            gh release create "${GITHUB_REF_NAME}" "dist/${PACKAGE_NAME}.zip" \
-              --title "${GITHUB_REF_NAME}" \
-              "${notes_args[@]}"
-          fi
+      - name: Check upgrade savepoints
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci savepoints
+
+      - name: Mustache Lint
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci mustache
+
+      - name: Grunt
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci grunt --max-lint-warnings 0
+
+      - name: PHPUnit tests
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpunit --fail-on-warning
+
+      - name: Behat features
+        id: behat
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci behat --profile chrome --scss-deprecations
+
+      - name: Upload Behat Faildump
+        if: ${{ failure() && steps.behat.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Behat Faildump (${{ join(matrix.*, ', ') }})
+          path: ${{ github.workspace }}/moodledata/behat_dump
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Mark cancelled jobs as failed.
+        if: ${{ cancelled() }}
+        run: exit 1

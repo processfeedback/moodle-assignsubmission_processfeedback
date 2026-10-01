@@ -22,8 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Serve process data files through Moodle pluginfile.php.
  *
@@ -45,9 +43,9 @@ function assignsubmission_processfeedback_pluginfile(
     $forcedownload,
     array $options = []
 ) {
-    global $DB, $USER;
+    global $CFG, $DB;
 
-    if ($filearea !== 'process_files') {
+    if ($context->contextlevel != CONTEXT_MODULE || $filearea !== 'process_files') {
         return false;
     }
 
@@ -81,10 +79,15 @@ function assignsubmission_processfeedback_pluginfile(
         return false;
     }
 
-    $canviewownsubmission = (int) $submission->userid === (int) $USER->id &&
-        has_capability('mod/assign:submit', $context);
-    $cangrade = has_capability('mod/assign:grade', $context);
-    if (!$canviewownsubmission && !$cangrade) {
+    // Use the assignment's own access rules, as core submission plugins do: they cover
+    // group submissions, separate groups and the grading capabilities.
+    require_once($CFG->dirroot . '/mod/assign/locallib.php');
+    $assign = new assign($context, $cm, $course);
+    if ($assign->get_instance()->teamsubmission) {
+        if (!$assign->can_view_group_submission((int) $submission->groupid)) {
+            return false;
+        }
+    } else if (!$assign->can_view_submission((int) $submission->userid)) {
         return false;
     }
 
@@ -107,6 +110,7 @@ function assignsubmission_processfeedback_pluginfile(
         return false;
     }
 
-    send_stored_file($file, 0, 0, $forcedownload, $options);
+    // Download must be forced: the file was uploaded by a student.
+    send_stored_file($file, 0, 0, true, $options);
     return true;
 }

@@ -22,8 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Assignment submission plugin for Process Feedback files and summary data.
  *
@@ -62,6 +60,15 @@ class assign_submission_processfeedback extends assign_submission_plugin {
     /** @var string Legacy value for automatic process data submission. */
     private const LEGACY_SUBMISSION_MODE_AUTOMATIC = 'automatic';
 
+    /** @var string Separator between items of the inline grading summary. */
+    private const SUMMARY_SEPARATOR = '  •  ';
+
+    /** @var string Process summary file uploaded by the local plugin. */
+    private const SUMMARY_FILENAME = 'process_summary.json';
+
+    /** @var int Maximum size in bytes of the process summary file. */
+    private const SUMMARY_MAXBYTES = 65536;
+
     /** @var string[] Summary fields required in process_summary.json. */
     private const REQUIRED_SUMMARY_FIELDS = [
         'edit_time_seconds',
@@ -69,7 +76,6 @@ class assign_submission_processfeedback extends assign_submission_plugin {
         'active_days',
         'first_edit',
         'last_edit',
-        'largest_change_chars',
     ];
 
     /**
@@ -189,7 +195,11 @@ class assign_submission_processfeedback extends assign_submission_plugin {
         );
         $mform->addElement('hidden', self::INCLUDE_DATA_FIELD, 1);
         $mform->setType(self::INCLUDE_DATA_FIELD, PARAM_BOOL);
-        $mform->addElement('hidden', self::DRAFT_ITEM_ID_FIELD, 0);
+        global $CFG;
+        require_once($CFG->libdir . '/filelib.php');
+
+        // The local plugin uploads the process data into this draft area through Moodle's upload repository.
+        $mform->addElement('hidden', self::DRAFT_ITEM_ID_FIELD, file_get_unused_draft_itemid());
         $mform->setType(self::DRAFT_ITEM_ID_FIELD, PARAM_INT);
         return true;
     }
@@ -212,6 +222,11 @@ class assign_submission_processfeedback extends assign_submission_plugin {
             return true;
         }
 
+        if (!$this->is_valid_process_draft($draftitemid)) {
+            debugging('Process Feedback draft files were not saved because they did not pass validation.', DEBUG_DEVELOPER);
+            return true;
+        }
+
         $summary = $this->get_valid_process_summary_from_draft($draftitemid);
         if ($summary === null) {
             return true;
@@ -226,7 +241,7 @@ class assign_submission_processfeedback extends assign_submission_plugin {
             self::COMPONENT,
             self::FILEAREA,
             $submission->id,
-            ['subdirs' => 0]
+            ['subdirs' => 0, 'maxfiles' => 2]
         );
 
         $record = (object) [
@@ -237,7 +252,6 @@ class assign_submission_processfeedback extends assign_submission_plugin {
             'active_days'          => (int) $summary['active_days'],
             'first_edit'           => substr((string) $summary['first_edit'], 0, 32),
             'last_edit'            => substr((string) $summary['last_edit'], 0, 32),
-            'largest_change_chars' => (int) $summary['largest_change_chars'],
         ];
 
         $existing = $DB->get_record(self::TABLE, [
@@ -288,19 +302,25 @@ class assign_submission_processfeedback extends assign_submission_plugin {
 
         if ($hours > 0) {
             $edittime = get_string('durationhoursminutes', self::COMPONENT, (object) ['hours' => $hours, 'minutes' => $minutes]);
-        } elseif ($minutes > 0) {
+        } else if ($minutes > 0) {
             $edittime = get_string('durationminutes', self::COMPONENT, $minutes);
         } else {
             $edittime = get_string('durationseconds', self::COMPONENT, $seconds);
         }
         $lastedit = $this->format_edit_timestamp($record->last_edit);
 
-        $summaryline = get_string('edittime', self::COMPONENT) . ': ' . $edittime . '  •  ' .
-            get_string('activedays', self::COMPONENT) . ': ' . (int) $record->active_days . '  •  ' .
-            get_string('revisions', self::COMPONENT) . ': ' . $this->format_count((int) $record->revision_count) . '  •  ' .
-            get_string('largestchange', self::COMPONENT) . ': ' .
-            get_string('largestchangechars', self::COMPONENT, $this->format_count((int) $record->largest_change_chars)) . '  •  ' .
-            get_string('lastedit', self::COMPONENT) . ': ' . $lastedit;
+        $items = [
+            'edittime' => $edittime,
+            'activedays' => (string) (int) $record->active_days,
+            'revisions' => $this->format_count((int) $record->revision_count),
+            'lastedit' => $lastedit,
+        ];
+        $labelsep = get_string('labelsep', 'langconfig');
+        $parts = [];
+        foreach ($items as $identifier => $value) {
+            $parts[] = get_string($identifier, self::COMPONENT) . $labelsep . $value;
+        }
+        $summaryline = implode(self::SUMMARY_SEPARATOR, $parts);
 
         $html = html_writer::tag('div', s($summaryline));
 
@@ -634,6 +654,93 @@ class assign_submission_processfeedback extends assign_submission_plugin {
     }
 
     /**
+     * Whether a draft area holds exactly the process data files produced by the local plugin.
+     *
+     * The files arrive through Moodle's upload repository, which already applied the upload size limits,
+     * draft area limits and antivirus scan. The accepted file types and area size are sent by the browser
+     * there, so they are enforced again here before the files become part of the submission.
+     *
+     * @param int $draftitemid Draft item ID.
+     * @return bool
+     */
+    private function is_valid_process_draft(int $draftitemid): bool {
+        global $CFG, $USER;
+
+        $usercontext = context_user::instance($USER->id);
+        $files = get_file_storage()->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'filename', false);
+        if (count($files) !== 2) {
+            return false;
+        }
+
+        $zipcount = 0;
+        $summarycount = 0;
+        $totalsize = 0;
+        foreach ($files as $file) {
+            $totalsize += $file->get_filesize();
+            if ($file->get_filepath() !== '/') {
+                return false;
+            }
+            if ($file->get_filename() === self::SUMMARY_FILENAME) {
+                if ($file->get_filesize() > self::SUMMARY_MAXBYTES) {
+                    return false;
+                }
+                $summarycount++;
+            } else if ($this->is_zip_file($file)) {
+                $zipcount++;
+            } else {
+                return false;
+            }
+        }
+
+        $maxbytes = get_user_max_upload_file_size(
+            $this->assignment->get_context(),
+            $CFG->maxbytes,
+            $this->assignment->get_course()->maxbytes,
+            $this->get_file_submission_maxbytes()
+        );
+        if ($maxbytes != USER_CAN_IGNORE_FILE_SIZE_LIMITS && $totalsize > $maxbytes) {
+            return false;
+        }
+
+        return $zipcount === 1 && $summarycount === 1;
+    }
+
+    /**
+     * Whether a stored file is a ZIP archive, checked by extension, MIME type and file signature.
+     *
+     * @param stored_file $file Stored file.
+     * @return bool
+     */
+    private function is_zip_file(stored_file $file): bool {
+        if (strtolower(pathinfo($file->get_filename(), PATHINFO_EXTENSION)) !== 'zip') {
+            return false;
+        }
+        if ($file->get_mimetype() !== 'application/zip') {
+            return false;
+        }
+
+        $handle = $file->get_content_file_handle();
+        $signature = fread($handle, 4);
+        fclose($handle);
+
+        return $signature === "PK\x03\x04";
+    }
+
+    /**
+     * Get the assignment's file submission size limit, or 0 when file submissions are disabled.
+     *
+     * @return int
+     */
+    private function get_file_submission_maxbytes(): int {
+        $filesubmission = $this->assignment->get_submission_plugin_by_type('file');
+        if (!$filesubmission || !$filesubmission->is_enabled()) {
+            return 0;
+        }
+
+        return (int) $filesubmission->get_config('maxsubmissionsizebytes');
+    }
+
+    /**
      * Load and validate process summary metadata before persisting draft files.
      *
      * @param int $draftitemid Draft item ID.
@@ -650,7 +757,7 @@ class assign_submission_processfeedback extends assign_submission_plugin {
             'draft',
             $draftitemid,
             '/',
-            'process_summary.json'
+            self::SUMMARY_FILENAME
         );
 
         if (!$summaryfile) {
@@ -680,5 +787,4 @@ class assign_submission_processfeedback extends assign_submission_plugin {
     private function render_processfeedback_notice(string $text): string {
         return html_writer::div(s($text), 'alert alert-info assignsubmission-processfeedback-notice');
     }
-
 }

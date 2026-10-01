@@ -19,12 +19,12 @@ namespace assignsubmission_processfeedback\privacy;
 use core_privacy\local\metadata\collection;
 use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\contextlist;
+use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
 use mod_assign\privacy\assign_plugin_request_data;
 use mod_assign\privacy\assignsubmission_provider;
+use mod_assign\privacy\assignsubmission_user_provider;
 use mod_assign\privacy\useridlist;
-
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Privacy provider for Process Feedback assignment submissions.
@@ -34,9 +34,10 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class provider implements
-        \core_privacy\local\metadata\provider,
-        \core_privacy\local\request\plugin\provider,
-        assignsubmission_provider {
+    assignsubmission_provider,
+    assignsubmission_user_provider,
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\plugin\provider {
     /** @var string Plugin component name. */
     private const COMPONENT = 'assignsubmission_processfeedback';
 
@@ -61,7 +62,6 @@ final class provider implements
             'active_days' => 'privacy:metadata:assignsubmission_processfeedback:active_days',
             'first_edit' => 'privacy:metadata:assignsubmission_processfeedback:first_edit',
             'last_edit' => 'privacy:metadata:assignsubmission_processfeedback:last_edit',
-            'largest_change_chars' => 'privacy:metadata:assignsubmission_processfeedback:largest_change_chars',
         ], 'privacy:metadata:assignsubmission_processfeedback');
 
         $collection->add_subsystem_link('core_files', [], 'privacy:metadata:filearea');
@@ -209,6 +209,44 @@ final class provider implements
     }
 
     /**
+     * Add users with Process Feedback data in this assignment context.
+     *
+     * Not required: mod_assign already adds every user with a submission.
+     *
+     * @param userlist $userlist User list for the assignment context.
+     * @return void
+     */
+    public static function get_userids_from_context(userlist $userlist) {
+    }
+
+    /**
+     * Delete Process Feedback data for several submissions in one assignment.
+     *
+     * @param assign_plugin_request_data $deletedata Submissions, users and context to delete for.
+     * @return void
+     */
+    public static function delete_submissions(assign_plugin_request_data $deletedata) {
+        global $DB;
+
+        $submissionids = $deletedata->get_submissionids();
+        if (empty($submissionids)) {
+            return;
+        }
+
+        [$insql, $params] = $DB->get_in_or_equal($submissionids, SQL_PARAMS_NAMED);
+        get_file_storage()->delete_area_files_select(
+            $deletedata->get_context()->id,
+            self::COMPONENT,
+            self::FILEAREA,
+            $insql,
+            $params
+        );
+
+        $params['assignid'] = $deletedata->get_assignid();
+        $DB->delete_records_select(self::TABLE, "assignment = :assignid AND submission $insql", $params);
+    }
+
+    /**
      * Compatibility alias for the task naming used in implementation notes.
      *
      * @param assign_plugin_request_data $deletedata Deletion request data.
@@ -287,7 +325,6 @@ final class provider implements
             'active_days' => (int) $record->active_days,
             'first_edit' => (string) $record->first_edit,
             'last_edit' => (string) $record->last_edit,
-            'largest_change_chars' => (int) $record->largest_change_chars,
         ]);
         writer::with_context($context)->export_area_files($subcontext, self::COMPONENT, self::FILEAREA, $record->submission);
     }
