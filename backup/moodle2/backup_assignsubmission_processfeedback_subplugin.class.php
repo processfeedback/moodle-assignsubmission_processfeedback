@@ -40,6 +40,7 @@ class backup_assignsubmission_processfeedback_subplugin extends backup_subplugin
         $wrapper = new backup_nested_element($this->get_recommended_name());
         $processfeedback = new backup_nested_element('submission_processfeedback', ['id'], [
             'assignment',
+            'submission',
             'edit_time_seconds',
             'revision_count',
             'active_days',

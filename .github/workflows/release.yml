@@ -20,7 +20,7 @@ concurrency:
 
 env:
   PLUGIN_COMPONENT: assignsubmission_processfeedback
-  PLUGIN_NAME: assignsubmission_processfeedback
+  PLUGIN_NAME: processfeedback
   PACKAGE_NAME: moodle-assignsubmission_processfeedback
   PHP_VERSION: "8.3"
 
@@ -86,6 +86,8 @@ jobs:
 
           grep -q "\$plugin->component = '${PLUGIN_COMPONENT}'" version.php
           grep -q "\$plugin->release = '" version.php
+          # Moodle's ZIP installer requires the root folder to be the plugin name without its type prefix.
+          test "${PLUGIN_COMPONENT#*_}" = "${PLUGIN_NAME}"
           grep -q "class assign_submission_processfeedback" locallib.php
           grep -q "assignsubmission_processfeedback_pluginfile" lib.php
 

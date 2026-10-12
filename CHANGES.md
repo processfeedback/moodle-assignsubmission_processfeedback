@@ -1,5 +1,18 @@
 # Process Feedback Assignment Submission changes
 
+## 0.5.3 - 2026-10-12
+
+- Fixes assignment backups with user data, which failed on any site with this plugin installed: the backup
+  structure now includes the `submission` field used to annotate the process data files.
+- Restores process data files for each restored submission, as core `assignsubmission_file` does.
+- Deletes the plugin's summary records when an assignment is deleted (`delete_instance()`).
+- The privacy provider now only implements mod_assign's submission subplugin interfaces, so data is no longer
+  exported and deleted a second time as its own component.
+- Shows the last edit time in the grader's time zone and language (`userdate()`) instead of a fixed English
+  format in the server time zone.
+- Release ZIPs now use `processfeedback` as the root folder, so they can be installed with "Install plugin from
+  ZIP file".
+
 ## 0.5.2 - 2026-10-01
 
 - Process data is now uploaded through Moodle's standard upload repository instead of a custom endpoint.

@@ -17,7 +17,6 @@
 namespace assignsubmission_processfeedback\privacy;
 
 use core_privacy\local\metadata\collection;
-use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\contextlist;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
@@ -36,8 +35,7 @@ use mod_assign\privacy\useridlist;
 final class provider implements
     assignsubmission_provider,
     assignsubmission_user_provider,
-    \core_privacy\local\metadata\provider,
-    \core_privacy\local\request\plugin\provider {
+    \core_privacy\local\metadata\provider {
     /** @var string Plugin component name. */
     private const COMPONENT = 'assignsubmission_processfeedback';
 
@@ -66,60 +64,6 @@ final class provider implements
 
         $collection->add_subsystem_link('core_files', [], 'privacy:metadata:filearea');
         return $collection;
-    }
-
-    /**
-     * Get contexts containing Process Feedback submission data for a user.
-     *
-     * @param int $userid User ID.
-     * @return contextlist
-     */
-    public static function get_contexts_for_userid(int $userid): contextlist {
-        $contextlist = new contextlist();
-        self::add_contexts_for_userid($userid, $contextlist);
-        return $contextlist;
-    }
-
-    /**
-     * Export user data for approved contexts.
-     *
-     * @param approved_contextlist $contextlist Approved contexts.
-     * @return void
-     */
-    public static function export_user_data(approved_contextlist $contextlist) {
-        $user = $contextlist->get_user();
-        foreach ($contextlist->get_contexts() as $context) {
-            foreach (self::get_records_for_user_context($context->id, $user->id) as $record) {
-                self::export_record($context, [get_string('pluginname', self::COMPONENT)], $record);
-            }
-        }
-    }
-
-    /**
-     * Delete all Process Feedback submission data in a context.
-     *
-     * @param \context $context Context to delete from.
-     * @return void
-     */
-    public static function delete_data_for_all_users_in_context(\context $context) {
-        $assignmentid = self::get_assignment_id_from_context($context);
-        if (!$assignmentid) {
-            return;
-        }
-        self::delete_assignment_data($context, $assignmentid);
-    }
-
-    /**
-     * Delete Process Feedback submission data for a user in approved contexts.
-     *
-     * @param approved_contextlist $contextlist Approved contexts.
-     * @return void
-     */
-    public static function delete_data_for_user(approved_contextlist $contextlist) {
-        $user = $contextlist->get_user();
-        foreach ($contextlist->get_contexts() as $context) {
-            self::delete_user_context_data($context, $user->id);
-        }
     }
 
     /**
@@ -282,35 +226,6 @@ final class provider implements
     }
 
     /**
-     * Get Process Feedback records for a user in a context.
-     *
-     * @param int $contextid Context ID.
-     * @param int $userid User ID.
-     * @return array
-     */
-    private static function get_records_for_user_context(int $contextid, int $userid): array {
-        global $DB;
-
-        $sql = "SELECT pf.*
-                  FROM {context} ctx
-                  JOIN {course_modules} cm ON cm.id = ctx.instanceid
-                  JOIN {modules} m ON m.id = cm.module
-                  JOIN {assign} a ON a.id = cm.instance
-                  JOIN {" . self::TABLE . "} pf ON pf.assignment = a.id
-                  JOIN {assign_submission} s ON s.id = pf.submission AND s.assignment = a.id
-                 WHERE ctx.id = :contextid
-                       AND ctx.contextlevel = :contextlevel
-                       AND m.name = :modname
-                       AND s.userid = :userid";
-        return $DB->get_records_sql($sql, [
-            'contextid' => $contextid,
-            'contextlevel' => CONTEXT_MODULE,
-            'modname' => 'assign',
-            'userid' => $userid,
-        ]);
-    }
-
-    /**
      * Export one Process Feedback record and its files.
      *
      * @param \context $context Context.
@@ -327,21 +242,6 @@ final class provider implements
             'last_edit' => (string) $record->last_edit,
         ]);
         writer::with_context($context)->export_area_files($subcontext, self::COMPONENT, self::FILEAREA, $record->submission);
-    }
-
-    /**
-     * Get assignment ID from a context.
-     *
-     * @param \context $context Context.
-     * @return int
-     */
-    private static function get_assignment_id_from_context(\context $context): int {
-        if ($context->contextlevel !== CONTEXT_MODULE) {
-            return 0;
-        }
-
-        $cm = get_coursemodule_from_id('assign', $context->instanceid, 0, false, IGNORE_MISSING);
-        return $cm ? (int) $cm->instance : 0;
     }
 
     /**
@@ -383,19 +283,6 @@ final class provider implements
 
         self::delete_submission_files($context, $submissionid);
         $DB->delete_records(self::TABLE, ['submission' => $submissionid]);
-    }
-
-    /**
-     * Delete Process Feedback data for a user in a context.
-     *
-     * @param \context $context Context.
-     * @param int $userid User ID.
-     * @return void
-     */
-    private static function delete_user_context_data(\context $context, int $userid): void {
-        foreach (self::get_records_for_user_context($context->id, $userid) as $record) {
-            self::delete_submission_data($context, (int) $record->submission);
-        }
     }
 
     /**
