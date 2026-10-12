@@ -25,11 +25,11 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'assignsubmission_processfeedback';
-$plugin->version = 2026093001;
+$plugin->version = 2026101200;
 $plugin->requires = 2024042200;
 $plugin->supported = [404, 502];
 $plugin->maturity = MATURITY_STABLE;
-$plugin->release = '0.5.2';
+$plugin->release = '0.5.3';
 $plugin->dependencies = [
     'local_processfeedback' => 2026093000,
 ];

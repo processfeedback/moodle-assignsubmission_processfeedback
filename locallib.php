@@ -437,6 +437,22 @@ class assign_submission_processfeedback extends assign_submission_plugin {
     }
 
     /**
+     * Remove all process data for the assignment when it is deleted.
+     *
+     * Stored files are removed by core together with the module context.
+     *
+     * @return bool
+     */
+    public function delete_instance() {
+        global $DB;
+
+        $DB->delete_records(self::TABLE, [
+            'assignment' => $this->assignment->get_instance()->id,
+        ]);
+        return true;
+    }
+
+    /**
      * Copy process data to a new submission attempt.
      *
      * @param stdClass $oldsubmission Source submission record.
@@ -509,7 +525,7 @@ class assign_submission_processfeedback extends assign_submission_plugin {
 
         try {
             $date = new DateTime($value);
-            return date('j M g:i a', $date->getTimestamp());
+            return userdate($date->getTimestamp(), get_string('strftimedatetimeshort', 'langconfig'));
         } catch (Exception $exception) {
             return '';
         }

@@ -82,18 +82,14 @@ class restore_assignsubmission_processfeedback_subplugin extends restore_subplug
 
         $newitemid = $DB->insert_record('assignsubmission_processfeedback', $record);
         $this->set_mapping('assignsubmission_processfeedback', $data->id, $newitemid);
-    }
 
-    /**
-     * Restore related files after the submission mapping exists.
-     *
-     * @return void
-     */
-    protected function after_execute_submission() {
+        // Files are stored with the submission id as itemid, mapped by core assign restore.
         $this->add_related_files(
             'assignsubmission_processfeedback',
             'process_files',
-            'submission'
+            'submission',
+            null,
+            $data->submission ?? null
         );
     }
 }
